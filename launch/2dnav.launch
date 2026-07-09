@@ -1,0 +1,6 @@
+<launch>
+    <!-- Launch the 2D Nav Goal Publisher node -->
+    <node pkg="crawler_gazebo" type="2d_nav_goal_publisher" name="nav_goal_publisher" output="screen">
+
+    </node>
+</launch>

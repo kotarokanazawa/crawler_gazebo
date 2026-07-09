@@ -1,0 +1,49 @@
+crawler_gazebo:
+  simulator:
+    spawn_robot: true
+    spawn_arena: true
+    start_controllers: true
+    start_control_nodes: true
+    start_gui_tools: true
+    start_flipper_joint_gui: true
+    start_respawn_gui: true
+    start_cloudmap_publisher: true
+    start_contact_points_publisher: true
+
+gazebo_contact_points_publisher:
+  world_name: default
+  gazebo_contacts_topic: ~/physics/contacts
+  robot_model_name: crawler
+  contact_source_frame: map
+  target_frame: base_link
+  fallback_target_frame: remote_robot/base_link
+  publish_rate: 30.0
+  marker_scale: 0.04
+  publish_empty: true
+
+gazebo_to_octomap_publisher:
+  resolution: 0.025
+
+gazebo_to_octomap_publisher_gap_filter:
+  resolution: 0.025
+  debug_publish:
+    enabled: true
+  upsample:
+    final_resolution: 0.02
+  voxel_filter:
+    min_point_count: 1
+  outlier_filter:
+    enabled: false
+    min_neighbor_count: 1
+  overhang_filter:
+    enabled: true
+  gap_filter:
+    remove_interior: false
+    max_neighbor_count: 12
+
+gridmap_publisher:
+  resolution: 0.05
+  frame_id: map
+  max_x: 12.4
+  max_y: 8.0
+  csv_save_path: /tmp/gridmap.csv

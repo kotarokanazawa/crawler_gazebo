@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>crawler_gazebo</name>
+  <version>0.0.0</version>
+  <description>The crawler_gazebo package</description>
+  <maintainer email="kotaro@todo.todo">kotaro</maintainer>
+  <license>BSD</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>ament_index_cpp</depend>
+  <depend>gazebo_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>ignition-msgs8</depend>
+  <depend>ignition-transport11</depend>
+  <depend>pcl_conversions</depend>
+  <depend>pcl_ros</depend>
+  <depend>rclpy</depend>
+  <depend>rclcpp</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>tf2</depend>
+  <depend>tf2_geometry_msgs</depend>
+  <depend>tf2_ros</depend>
+  <depend>visualization_msgs</depend>
+
+  <exec_depend>crawler_description</exec_depend>
+  <exec_depend>gazebo_ros2_control</exec_depend>
+  <exec_depend>crawler_ros_control</exec_depend>
+  <exec_depend>controller_manager</exec_depend>
+  <exec_depend>joint_state_publisher</exec_depend>
+  <exec_depend>joint_state_publisher_gui</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>xacro</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+    <gazebo_ros gazebo_model_path="${prefix}/gazebo_model/model" />
+    <gazebo_ros gazebo_plugin_path="${prefix}/lib" />
+  </export>
+</package>

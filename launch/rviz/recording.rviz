@@ -1,0 +1,439 @@
+Panels:
+  - Class: rviz/Displays
+    Help Height: 78
+    Name: Displays
+    Property Tree Widget:
+      Expanded:
+        - /Global Options1
+        - /Status1
+        - /RobotConfig1
+        - /RobotConfig1/Namespaces1
+        - /GazeboObject1
+        - /RobotModel1
+        - /Pose1
+        - /MarkerArray1/Namespaces1
+        - /SimplifiedTerrein1
+        - /GridMap1
+      Splitter Ratio: 0.5
+    Tree Height: 746
+  - Class: rviz/Selection
+    Name: Selection
+  - Class: rviz/Tool Properties
+    Expanded:
+      - /2D Pose Estimate1
+      - /2D Nav Goal1
+      - /Publish Point1
+    Name: Tool Properties
+    Splitter Ratio: 0.5886790156364441
+  - Class: rviz/Views
+    Expanded:
+      - /Current View1
+    Name: Views
+    Splitter Ratio: 0.5
+  - Class: rviz/Time
+    Name: Time
+    SyncMode: 0
+    SyncSource: ""
+Preferences:
+  PromptSaveOnExit: true
+Toolbars:
+  toolButtonStyle: 2
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Alpha: 0.5
+      Cell Size: 1
+      Class: rviz/Grid
+      Color: 160; 160; 164
+      Enabled: false
+      Line Style:
+        Line Width: 0.029999999329447746
+        Value: Lines
+      Name: Grid
+      Normal Cell Count: 0
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Plane: XY
+      Plane Cell Count: 10
+      Reference Frame: <Fixed Frame>
+      Value: false
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /bounding_box
+      Name: RobotConfig
+      Namespaces:
+        bounding_box: false
+        com_predictive: false
+        com_predictive_elevation: false
+        flipper_angle: true
+        flipper_bounding_box: false
+        path: false
+        path_flipper_bl: false
+        path_flipper_br: false
+        path_flipper_fl: false
+        path_flipper_fr: false
+        path_predictive: false
+        path_predictive_elevation: false
+        simplify_kinematics: true
+        simplify_kinematics_line: true
+      Queue Size: 100
+      Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /mesh_marker
+      Name: GazeboObject
+      Namespaces:
+        mesh_namespace: true
+      Queue Size: 100
+      Value: true
+    - Class: octomap_rviz_plugin/OccupancyGrid
+      Enabled: false
+      Max. Height Display: 3.4028234663852886e+38
+      Max. Octree Depth: 16
+      Min. Height Display: -3.4028234663852886e+38
+      Name: OccupancyGrid
+      Octomap Topic: /gazebo/octomap
+      Queue Size: 5
+      Value: false
+      Voxel Alpha: 1
+      Voxel Coloring: Z-Axis
+      Voxel Rendering: All Voxels
+    - Alpha: 1
+      Autocompute Intensity Bounds: true
+      Class: grid_map_rviz_plugin/GridMap
+      Color: 200; 200; 200
+      Color Layer: elevation
+      Color Transformer: GridMapLayer
+      ColorMap: afmhot
+      Enabled: false
+      Grid Cell Decimation: 1
+      Grid Line Thickness: 0.10000000149011612
+      Height Layer: elevation
+      Height Transformer: Layer
+      History Length: 1
+      Invert ColorMap: false
+      Max Color: 255; 255; 255
+      Max Intensity: 10
+      Min Color: 0; 0; 0
+      Min Intensity: 0
+      Name: GridMapFull
+      Show Grid Lines: true
+      Topic: /gazebo/grid_map
+      Unreliable: false
+      Use ColorMap: true
+      Value: false
+    - Alpha: 1
+      Class: rviz/RobotModel
+      Collision Enabled: false
+      Enabled: true
+      Links:
+        All Links Enabled: false
+        Expand Joint Details: false
+        Expand Link Details: false
+        Expand Tree: false
+        Link Tree Style: Links in Alphabetic Order
+        base_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        flipper_body_left_front:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        flipper_body_left_rear:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        flipper_body_right_front:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        flipper_body_right_rear:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        flipper_idler_left_front:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        flipper_idler_left_rear:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        flipper_idler_right_front:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        flipper_idler_right_rear:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        flipper_sprocket_left_front:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        flipper_sprocket_left_rear:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        flipper_sprocket_right_front:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        flipper_sprocket_right_rear:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        idler_left:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: false
+        idler_right:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: false
+        left_front:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        left_rear:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        main_body:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        main_body_left:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: false
+        main_body_right:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: false
+        right_front:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        right_rear:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        sprocket_left:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: false
+        sprocket_right:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: false
+      Name: RobotModel
+      Robot Description: robot_description
+      TF Prefix: remote_robot
+      Update Interval: 0
+      Value: true
+      Visual Enabled: true
+    - Alpha: 1
+      Axes Length: 0.20000000298023224
+      Axes Radius: 0.05000000074505806
+      Class: rviz/Pose
+      Color: 255; 25; 0
+      Enabled: true
+      Head Length: 0.30000001192092896
+      Head Radius: 0.10000000149011612
+      Name: Pose
+      Queue Size: 10
+      Shaft Length: 1
+      Shaft Radius: 0.05000000074505806
+      Shape: Axes
+      Topic: /gazebo_robot_pose
+      Unreliable: false
+      Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /angle_estimator/visualization_marker_array
+      Name: MarkerArray
+      Namespaces:
+        {}
+      Queue Size: 100
+      Value: true
+    - Alpha: 1
+      Autocompute Intensity Bounds: true
+      Class: grid_map_rviz_plugin/GridMap
+      Color: 200; 200; 200
+      Color Layer: elevation
+      Color Transformer: GridMapLayer
+      ColorMap: twilight
+      Enabled: true
+      Grid Cell Decimation: 1
+      Grid Line Thickness: 0.009999999776482582
+      Height Layer: elevation
+      Height Transformer: GridMapLayer
+      History Length: 1
+      Invert ColorMap: false
+      Max Color: 255; 255; 255
+      Max Intensity: 10
+      Min Color: 0; 0; 0
+      Min Intensity: 0
+      Name: GridMapNeartheRobot
+      Show Grid Lines: true
+      Topic: /robot_grid_map
+      Unreliable: false
+      Use ColorMap: true
+      Value: true
+    - Alpha: 0.5
+      Autocompute Intensity Bounds: true
+      Class: grid_map_rviz_plugin/GridMap
+      Color: 200; 200; 200
+      Color Layer: elevation
+      Color Transformer: IntensityLayer
+      ColorMap: terrain
+      Enabled: true
+      Grid Cell Decimation: 1
+      Grid Line Thickness: 0.009999999776482582
+      Height Layer: elevation
+      Height Transformer: ""
+      History Length: 1
+      Invert ColorMap: false
+      Max Color: 255; 255; 255
+      Max Intensity: 10
+      Min Color: 0; 0; 0
+      Min Intensity: 0
+      Name: SimplifiedTerrein
+      Show Grid Lines: true
+      Topic: /grid_map/expansion
+      Unreliable: false
+      Use ColorMap: true
+      Value: true
+    - Alpha: 1
+      Autocompute Intensity Bounds: true
+      Autocompute Value Bounds:
+        Max Value: 0.30000001192092896
+        Min Value: 0
+        Value: true
+      Axis: Z
+      Channel Name: intensity
+      Class: rviz/PointCloud2
+      Color: 255; 255; 255
+      Color Transformer: AxisColor
+      Decay Time: 0
+      Enabled: false
+      Invert Rainbow: false
+      Max Color: 255; 255; 255
+      Min Color: 0; 0; 0
+      Name: CloudMap
+      Position Transformer: XYZ
+      Queue Size: 10
+      Selectable: true
+      Size (Pixels): 3
+      Size (m): 0.009999999776482582
+      Style: Flat Squares
+      Topic: /gazebo/cloud_map
+      Unreliable: false
+      Use Fixed Frame: true
+      Use rainbow: true
+      Value: false
+    - Alpha: 0.5
+      Autocompute Intensity Bounds: true
+      Class: grid_map_rviz_plugin/GridMap
+      Color: 200; 200; 200
+      Color Layer: elevation_hdilated_processed_gaussian
+      Color Transformer: ""
+      ColorMap: default
+      Enabled: true
+      Grid Cell Decimation: 2
+      Grid Line Thickness: 0.10000000149011612
+      Height Layer: elevation_hdilated_processed_gaussian
+      Height Transformer: Layer
+      History Length: 1
+      Invert ColorMap: false
+      Max Color: 255; 255; 255
+      Max Intensity: 10
+      Min Color: 0; 0; 0
+      Min Intensity: 0
+      Name: GridMap
+      Show Grid Lines: true
+      Topic: /grid_map/median
+      Unreliable: false
+      Use ColorMap: true
+      Value: true
+  Enabled: true
+  Global Options:
+    Background Color: 186; 189; 182
+    Default Light: true
+    Fixed Frame: map
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz/Interact
+      Hide Inactive Objects: true
+    - Class: rviz/MoveCamera
+    - Class: rviz/Select
+    - Class: rviz/FocusCamera
+    - Class: rviz/Measure
+    - Class: rviz/SetInitialPose
+      Theta std deviation: 0.2617993950843811
+      Topic: /initialpose
+      X std deviation: 0.5
+      Y std deviation: 0.5
+    - Class: rviz/SetGoal
+      Topic: /move_base_simple/goal
+    - Class: rviz/PublishPoint
+      Single click: true
+      Topic: /clicked_point
+  Value: true
+  Views:
+    Current:
+      Class: rviz/Orbit
+      Distance: 3.4337573051452637
+      Enable Stereo Rendering:
+        Stereo Eye Separation: 0.05999999865889549
+        Stereo Focal Distance: 1
+        Swap Stereo Eyes: false
+        Value: false
+      Field of View: 0.7853981852531433
+      Focal Point:
+        X: -1.6046758890151978
+        Y: 1.9021328687667847
+        Z: -0.0935576856136322
+      Focal Shape Fixed Size: true
+      Focal Shape Size: 0.05000000074505806
+      Invert Z Axis: false
+      Name: Current View
+      Near Clip Distance: 0.009999999776482582
+      Pitch: 0.4847979247570038
+      Target Frame: <Fixed Frame>
+      Yaw: 5.69042444229126
+    Saved: ~
+Window Geometry:
+  Displays:
+    collapsed: false
+  Height: 1043
+  Hide Left Dock: false
+  Hide Right Dock: true
+  QMainWindow State: 000000ff00000000fd0000000400000000000001b100000375fc0200000008fb0000001200530065006c0065006300740069006f006e00000001e10000009b0000005c00fffffffb0000001e0054006f006f006c002000500072006f007000650072007400690065007302000001ed000001df00000185000000a3fb000000120056006900650077007300200054006f006f02000001df000002110000018500000122fb000000200054006f006f006c002000500072006f0070006500720074006900650073003203000002880000011d000002210000017afb000000100044006900730070006c006100790073010000003d00000375000000c900fffffffb0000002000730065006c0065006300740069006f006e00200062007500660066006500720200000138000000aa0000023a00000294fb00000014005700690064006500530074006500720065006f02000000e6000000d2000003ee0000030bfb0000000c004b0069006e0065006300740200000186000001060000030c00000261000000010000010f00000375fc0200000003fb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000041000000780000000000000000fb0000000a00560069006500770073000000003d00000375000000a400fffffffb0000001200530065006c0065006300740069006f006e010000025a000000b200000000000000000000000200000490000000a9fc0100000001fb0000000a00560069006500770073030000004e00000080000002e10000019700000003000007580000003efc0100000002fb0000000800540069006d0065010000000000000758000003bc00fffffffb0000000800540069006d00650100000000000004500000000000000000000005a10000037500000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  Selection:
+    collapsed: false
+  Time:
+    collapsed: false
+  Tool Properties:
+    collapsed: false
+  Views:
+    collapsed: true
+  Width: 1880
+  X: 1960
+  Y: 0
