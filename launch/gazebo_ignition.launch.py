@@ -91,7 +91,7 @@ def _append_sun_light(world):
     _set_child_text(light, "direction", "-0.5 0.1 -0.9")
 
 
-def _make_ignition_world_file(worldfile):
+def _make_ignition_world_file(worldfile, max_step_size, real_time_update_rate):
     try:
         tree = ET.parse(worldfile)
     except ET.ParseError:
@@ -109,6 +109,34 @@ def _make_ignition_world_file(worldfile):
             replaced_sun = True
     if replaced_sun:
         _append_sun_light(world)
+
+    # A crawler has many small, fast-moving track collision shapes.  Use a
+    # finer physics step and Bullet collision detection so thin walls and
+    # obstacle edges are not skipped between consecutive simulation steps.
+    physics = world.find("physics")
+    if physics is None:
+        physics = ET.SubElement(
+            world, "physics", {"name": "crawler_physics", "type": "dart", "default": "true"})
+    else:
+        physics.set("type", "dart")
+        physics.set("default", "true")
+    _set_child_text(physics, "max_step_size", str(max_step_size))
+    _set_child_text(physics, "real_time_update_rate", str(real_time_update_rate))
+    _set_child_text(physics, "max_contacts", "50")
+    dart = physics.find("dart")
+    if dart is None:
+        dart = ET.SubElement(physics, "dart")
+    _set_child_text(dart, "collision_detector", "bullet")
+
+    # Once an SDF declares a world system explicitly, Ignition no longer adds
+    # the default server systems. Keep the normal systems and add Contact.
+    for filename, name in (
+        ("ignition-gazebo-physics-system", "ignition::gazebo::systems::Physics"),
+        ("ignition-gazebo-user-commands-system", "ignition::gazebo::systems::UserCommands"),
+        ("ignition-gazebo-scene-broadcaster-system", "ignition::gazebo::systems::SceneBroadcaster"),
+        ("ignition-gazebo-contact-system", "ignition::gazebo::systems::Contact"),
+    ):
+        ET.SubElement(world, "plugin", {"filename": filename, "name": name})
 
     path = Path(tempfile.gettempdir()) / f"crawler_gazebo_ignition_{Path(worldfile).stem}.sdf"
     tree.write(path, encoding="unicode", xml_declaration=True)
@@ -473,7 +501,8 @@ def _continuous_track_translation_period(plugin):
     return (2.0 * length + 3.141592653589793 * pitch_diameter) / max(elements_per_round, 1)
 
 
-def _convert_continuous_track_plugin(plugin):
+def _convert_continuous_track_plugin(
+        plugin, update_rate, segment_mode, translation_radius):
     track_name = plugin.get("name", "continuous_track")
     pitch_diameter = _child_text(plugin.find("sprocket"), "pitch_diameter", "0.24")
     translation_period = _continuous_track_translation_period(plugin)
@@ -498,10 +527,14 @@ def _convert_continuous_track_plugin(plugin):
                 _set_child_text(segment, "pitch_diameter", pitch_diameter)
             else:
                 _set_child_text(segment, "translation_period", f"{translation_period:.9g}")
+                _set_child_text(segment, "translation_radius", str(translation_radius))
     _set_child_text(plugin, "velocity_deadband", "0.02")
+    _set_child_text(plugin, "update_segments", "true")
+    _set_child_text(plugin, "update_rate", str(update_rate))
+    _set_child_text(plugin, "segment_mode", segment_mode)
 
 
-def _append_ignition_joint_controllers(root):
+def _append_ignition_joint_controllers(root, flipper_pd):
     velocity_joints = [
         "sprocket_axle_left",
         "sprocket_axle_right",
@@ -516,6 +549,16 @@ def _append_ignition_joint_controllers(root):
         "joint_right_front",
         "joint_right_rear",
     ]
+
+    gazebo = ET.SubElement(root, "gazebo")
+    ET.SubElement(
+        gazebo,
+        "plugin",
+        {
+            "filename": "ignition-gazebo-joint-state-publisher-system",
+            "name": "gz::sim::systems::JointStatePublisher",
+        },
+    )
 
     for joint in velocity_joints:
         gazebo = ET.SubElement(root, "gazebo")
@@ -542,15 +585,44 @@ def _append_ignition_joint_controllers(root):
         )
         _set_child_text(plugin, "joint_name", joint)
         _set_child_text(plugin, "topic", f"/model/crawler/joint/{joint}/0/cmd_pos")
-        _set_child_text(plugin, "p_gain", "1200")
+        _set_child_text(plugin, "p_gain", str(flipper_pd["kp"]))
         _set_child_text(plugin, "i_gain", "0")
-        _set_child_text(plugin, "d_gain", "80")
-        _set_child_text(plugin, "cmd_max", "20000")
-        _set_child_text(plugin, "cmd_min", "-20000")
+        _set_child_text(plugin, "d_gain", str(flipper_pd["kd"]))
+        _set_child_text(plugin, "cmd_max", str(flipper_pd["effort"]))
+        _set_child_text(plugin, "cmd_min", str(-flipper_pd["effort"]))
 
 
-def _make_ignition_robot_description(robot_description):
+def _reverse_right_flipper_joint_axes(root):
+    right_flipper_joints = {"joint_right_front", "joint_right_rear"}
+    for joint in root.findall("joint"):
+        if joint.get("name") not in right_flipper_joints:
+            continue
+        axis = joint.find("axis")
+        if axis is None:
+            continue
+        values = axis.get("xyz", "").split()
+        if len(values) != 3:
+            continue
+        try:
+            reversed_axis = [-float(value) for value in values]
+        except ValueError:
+            continue
+        axis.set(
+            "xyz",
+            " ".join(f"{0.0 if abs(value) < 1e-12 else value:g}" for value in reversed_axis),
+        )
+
+
+def _make_ignition_robot_description(
+        robot_description, flipper_pd, track_update_rate, track_segment_mode,
+        track_contact_radius):
     root = ET.fromstring(_strip_xml_declaration(robot_description))
+
+    # Keep a common command convention for all flippers: positive raises the
+    # flipper.  The right-side joints in the source URDF use the opposite axis.
+    _reverse_right_flipper_joint_axes(root)
+    # Keep the discrete grouser collisions.  Replacing them with a smooth
+    # envelope prevents the tread bars from engaging vertical obstacle edges.
 
     for parent in root.iter():
         for plugin in list(parent.findall("plugin")):
@@ -568,7 +640,8 @@ def _make_ignition_robot_description(robot_description):
             filename = plugin.get("filename", "")
             name = plugin.get("name", "")
             if filename == "libContinuousTrack.so":
-                _convert_continuous_track_plugin(plugin)
+                _convert_continuous_track_plugin(
+                    plugin, track_update_rate, track_segment_mode, track_contact_radius)
         if len(gazebo) == 0 and not gazebo.attrib:
             _remove_element(root, gazebo)
 
@@ -576,7 +649,7 @@ def _make_ignition_robot_description(robot_description):
     if ros2_control is not None:
         _remove_element(root, ros2_control)
 
-    _append_ignition_joint_controllers(root)
+    _append_ignition_joint_controllers(root, flipper_pd)
     return ET.tostring(root, encoding="unicode")
 
 
@@ -590,17 +663,55 @@ def _launch_setup(context, *args, **kwargs):
     crawler_gazebo_share = Path(get_package_share_directory("crawler_gazebo"))
     crawler_description_share = Path(get_package_share_directory("crawler_description"))
     ignition_track_lib = _optional_package_lib("gazebo_continuous_track_ros2_ignition")
-
-    robot_size = LaunchConfiguration("robot_size").perform(context)
-    robot_urdf_arg = LaunchConfiguration("robot_urdf").perform(context)
-    robot_urdf = Path(robot_urdf_arg) if robot_urdf_arg else crawler_gazebo_share / "urdf" / f"{robot_size}_crawler.urdf"
-    model = LaunchConfiguration("model").perform(context)
-    worldfile = _make_ignition_world_file(
-        _resolve_package_file(LaunchConfiguration("worldfile").perform(context), crawler_gazebo_share, "world"))
     simsetting_yaml = _resolve_package_file(
         LaunchConfiguration("simsetting_yaml").perform(context), crawler_gazebo_share, "config")
     settings = _read_yaml(simsetting_yaml)
 
+    robot_size = LaunchConfiguration("robot_size").perform(context)
+    robot_config_yaml = crawler_gazebo_share / "config" / "robot" / f"{robot_size}.yaml"
+    robot_config = _read_yaml(robot_config_yaml).get("robot_config", {})
+    flipper_pd = {
+        "kp": float(_setting(robot_config, "joints.flipper_position_kp", 220.0)),
+        "kd": float(_setting(robot_config, "joints.flipper_position_kd", 70.0)),
+        "effort": float(_setting(robot_config, "joints.flipper_effort", 8000.0)),
+    }
+    robot_urdf_arg = LaunchConfiguration("robot_urdf").perform(context)
+    robot_urdf = Path(robot_urdf_arg) if robot_urdf_arg else crawler_gazebo_share / "urdf" / f"{robot_size}_crawler.urdf"
+    grouser_shape = str(_setting(
+        settings, "crawler_gazebo.simulator.grouser_shape", "auto")).lower()
+    valid_grouser_shapes = {
+        "auto", "rectangle", "trapezoid", "spike",
+        "semicircle", "fillet",
+    }
+    if grouser_shape not in valid_grouser_shapes:
+        raise ValueError(
+            "crawler_gazebo.simulator.grouser_shape must be auto, rectangle, "
+            "trapezoid, spike, semicircle, or fillet")
+    # An explicit robot_urdf always wins. Otherwise a simsetting override is
+    # generated into /tmp so the checked-in/default generated URDF is untouched.
+    if not robot_urdf_arg and grouser_shape != "auto":
+        generator = (
+            Path(get_package_prefix("crawler_gazebo"))
+            / "lib" / "crawler_gazebo" / "generate_crawler_urdf.py")
+        generated_urdf = (
+            Path(tempfile.gettempdir())
+            / f"crawler_gazebo_{robot_size}_{grouser_shape}.urdf")
+        subprocess.check_call([
+            str(generator), "--no-gui",
+            "--config", str(robot_config_yaml),
+            "--output", str(generated_urdf),
+            "--set", f"continuous_track.grouser_shape={grouser_shape}",
+        ])
+        robot_urdf = generated_urdf
+    model = LaunchConfiguration("model").perform(context)
+    max_step_size = float(LaunchConfiguration("max_step_size").perform(context))
+    real_time_update_rate = float(LaunchConfiguration("real_time_update_rate").perform(context))
+    worldfile = _make_ignition_world_file(
+        _resolve_package_file(
+            LaunchConfiguration("worldfile").perform(context), crawler_gazebo_share, "world"),
+        max_step_size,
+        real_time_update_rate,
+    )
     spawn_robot = _as_bool(_setting(settings, "crawler_gazebo.simulator.spawn_robot", True))
     spawn_arena_setting = _as_bool(_setting(settings, "crawler_gazebo.simulator.spawn_arena", True))
     start_gui_tools_setting = _as_bool(_setting(settings, "crawler_gazebo.simulator.start_gui_tools", True))
@@ -618,14 +729,47 @@ def _launch_setup(context, *args, **kwargs):
         _as_bool(LaunchConfiguration("start_cloudmap_publisher").perform(context))
         and start_cloudmap_publisher_setting
     )
+    start_rviz = _as_bool(LaunchConfiguration("rviz").perform(context))
+    initial_flipper_angle = float(LaunchConfiguration("initial_flipper_angle").perform(context))
     use_generated_robot_urdf = _as_bool(LaunchConfiguration("use_generated_robot_urdf").perform(context))
     use_sim_time = _as_bool(LaunchConfiguration("use_sim_time").perform(context))
     ign_partition = LaunchConfiguration("ign_partition").perform(context)
     if ign_partition == "auto":
         ign_partition = f"crawler_gazebo_{os.getpid()}"
-    spawn_z = LaunchConfiguration("spawn_z").perform(context)
+
+    def spawn_value(name, default):
+        launch_value = LaunchConfiguration(f"spawn_{name}").perform(context)
+        if launch_value != "auto":
+            return launch_value
+        return str(_setting(settings, f"crawler_gazebo.simulator.spawn_pose.{name}", default))
+
+    spawn_x = spawn_value("x", 0.0)
+    spawn_y = spawn_value("y", 0.0)
+    spawn_z = spawn_value("z", "auto")
     if spawn_z == "auto":
         spawn_z = _default_spawn_z(crawler_gazebo_share, robot_size)
+    spawn_roll = math.radians(float(spawn_value("roll", 0.0)))
+    spawn_pitch = math.radians(float(spawn_value("pitch", 0.0)))
+    spawn_yaw = math.radians(float(spawn_value("yaw", 0.0)))
+    spawn_orientation = _quaternion_from_euler(spawn_roll, spawn_pitch, spawn_yaw)
+    track_update_rate = float(
+        _setting(settings, "crawler_gazebo.simulator.track_update_rate", 200.0))
+    track_contact_radius_arg = LaunchConfiguration("track_contact_radius").perform(context)
+    if track_contact_radius_arg == "auto":
+        track_contact_radius = (
+            float(_setting(robot_config, "geometry.wheel_radius", 0.082))
+            + float(_setting(robot_config, "continuous_track.belt_thickness", 0.02))
+            + 0.5 * float(_setting(robot_config, "continuous_track.grouser_height", 0.018))
+        )
+    else:
+        track_contact_radius = float(track_contact_radius_arg)
+    track_segment_mode = LaunchConfiguration("track_segment_mode").perform(context)
+    if track_segment_mode == "auto":
+        track_segment_mode = str(_setting(
+            settings, "crawler_gazebo.simulator.track_segment_mode", "all"))
+    if track_segment_mode not in {"all", "arc_only", "straight_only"}:
+        raise ValueError(
+            "track_segment_mode must be all, arc_only, or straight_only")
     cloud_resolution = float(_setting(settings, "gazebo_to_octomap_publisher.resolution", 0.025))
 
     ign_cmd = ["ign", "gazebo"]
@@ -693,12 +837,16 @@ def _launch_setup(context, *args, **kwargs):
                     "enable_flipper_velocity_transmissions": LaunchConfiguration("enable_flipper_velocity_transmissions").perform(context),
                 },
             )
-        robot_description = _make_ignition_robot_description(robot_description_raw)
+        robot_description = _make_ignition_robot_description(
+            robot_description_raw, flipper_pd, track_update_rate, track_segment_mode,
+            track_contact_radius)
         spawn_urdf = _write_spawn_urdf(robot_description, robot_urdf.stem)
         request = (
             f'sdf_filename: "{spawn_urdf}", '
             'name: "crawler", '
-            f'pose: {{position: {{x: 0, y: 0, z: {spawn_z}}}, orientation: {{w: 1, x: 0, y: 0, z: 0}}}}'
+            f'pose: {{position: {{x: {spawn_x}, y: {spawn_y}, z: {spawn_z}}}, '
+            f'orientation: {{w: {spawn_orientation["w"]}, x: {spawn_orientation["x"]}, '
+            f'y: {spawn_orientation["y"]}, z: {spawn_orientation["z"]}}}}}'
         )
 
         actions.extend([
@@ -708,6 +856,7 @@ def _launch_setup(context, *args, **kwargs):
                 name="robot_state_publisher",
                 output="log",
                 parameters=[{"robot_description": robot_description, "use_sim_time": use_sim_time}],
+                remappings=[("joint_states", "/crawler/joint_states")],
             ),
             TimerAction(
                 period=5.5 if spawn_arena else 3.0,
@@ -741,6 +890,14 @@ def _launch_setup(context, *args, **kwargs):
                         "model_name": "crawler",
                         "cmd_vel_topic": "/target/cmd_vel",
                         "joint_state_topic": "/target/joint_states",
+                        "limit_cmd_vel": False,
+                        "map_frame": "map",
+                        "base_frame": "base_link",
+                        "model_pose_topic": f"/world/{world_name}/dynamic_pose/info",
+                        "model_joint_state_topic":
+                            f"/world/{world_name}/model/crawler/joint_state",
+                        "initial_flipper_angle": initial_flipper_angle,
+                        "joint_state_output_topic": "/crawler/joint_states",
                     }
                 ],
             ),
@@ -767,7 +924,14 @@ def _launch_setup(context, *args, **kwargs):
                         executable="joint_state_publisher_gui",
                         name="flipper_joint_state_publisher_gui",
                         output="screen",
-                        parameters=[{"robot_description": flipper_description, "use_sim_time": False}],
+                        parameters=[{
+                            "robot_description": flipper_description,
+                            "use_sim_time": False,
+                            "zeros.joint_left_front": initial_flipper_angle,
+                            "zeros.joint_left_rear": initial_flipper_angle,
+                            "zeros.joint_right_front": initial_flipper_angle,
+                            "zeros.joint_right_rear": initial_flipper_angle,
+                        }],
                         remappings=[("joint_states", "/target/joint_states")],
                     )
                 )
@@ -813,6 +977,22 @@ def _launch_setup(context, *args, **kwargs):
             ),
         ])
 
+    if start_rviz:
+        rviz_config = _resolve_package_file(
+            LaunchConfiguration("rviz_config").perform(context),
+            crawler_gazebo_share,
+            "launch/rviz",
+        )
+        actions.append(
+            Node(
+                package="rviz2",
+                executable="rviz2",
+                name="rviz2",
+                output="screen",
+                arguments=["-d", str(rviz_config)],
+            )
+        )
+
     return actions
 
 
@@ -827,7 +1007,8 @@ def generate_launch_description():
         DeclareLaunchArgument("use_generated_robot_urdf", default_value="true"),
         DeclareLaunchArgument("worldfile", default_value="base_fields.world"),
         DeclareLaunchArgument("simsetting_yaml", default_value="simsetting.yaml"),
-        DeclareLaunchArgument("arena_yaml", default_value="benchmark.yaml"),
+        # DeclareLaunchArgument("arena_yaml", default_value="benchmark.yaml"),
+        DeclareLaunchArgument("arena_yaml", default_value="singlerane/bridge.yaml"),
         DeclareLaunchArgument("spawn_arena", default_value="true"),
         DeclareLaunchArgument("use_wall_arg", default_value="false"),
         DeclareLaunchArgument("wall_sdf", default_value=""),
@@ -844,9 +1025,21 @@ def generate_launch_description():
         DeclareLaunchArgument("ign_partition", default_value="auto"),
         DeclareLaunchArgument("gui", default_value="true"),
         DeclareLaunchArgument("render_engine_gui", default_value="ogre"),
+        DeclareLaunchArgument("spawn_x", default_value="auto"),
+        DeclareLaunchArgument("spawn_y", default_value="auto"),
         DeclareLaunchArgument("spawn_z", default_value="auto"),
+        DeclareLaunchArgument("spawn_roll", default_value="auto"),
+        DeclareLaunchArgument("spawn_pitch", default_value="auto"),
+        DeclareLaunchArgument("spawn_yaw", default_value="auto"),
+        DeclareLaunchArgument("track_segment_mode", default_value="auto"),
+        DeclareLaunchArgument("track_contact_radius", default_value="auto"),
+        DeclareLaunchArgument("max_step_size", default_value="0.0005"),
+        DeclareLaunchArgument("real_time_update_rate", default_value="2000"),
         DeclareLaunchArgument("start_gui_tools", default_value="true"),
         DeclareLaunchArgument("start_flipper_joint_gui", default_value="true"),
         DeclareLaunchArgument("start_cloudmap_publisher", default_value="true"),
+        DeclareLaunchArgument("initial_flipper_angle", default_value="0.0"),
+        DeclareLaunchArgument("rviz", default_value="false"),
+        DeclareLaunchArgument("rviz_config", default_value="crawler.rviz"),
         OpaqueFunction(function=_launch_setup),
     ])

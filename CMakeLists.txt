@@ -71,6 +71,7 @@ ament_target_dependencies(crawler_ignition_control_bridge
   geometry_msgs
   rclcpp
   sensor_msgs
+  tf2_ros
 )
 target_link_libraries(crawler_ignition_control_bridge
   ignition-msgs8::ignition-msgs8

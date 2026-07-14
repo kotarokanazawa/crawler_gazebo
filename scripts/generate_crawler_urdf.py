@@ -48,6 +48,7 @@ DEFAULT_DATA: Dict[str, Any] = {
             "flipper_position": 0.225,
             "flipper_y_offset": 0.23,
             "wheel_radius": 0.082,
+            "track_collision_margin": 0.03,
         },
         "mass": {
             "base": 5.0,
@@ -60,14 +61,14 @@ DEFAULT_DATA: Dict[str, Any] = {
         "joints": {
             "flipper_lower": -2.35619449,
             "flipper_upper": 2.35619449,
-            "flipper_torque_max": 8000.0,
-            "flipper_effort": 8000.0,
+            "flipper_torque_max": 20000.0,
+            "flipper_effort": 20000.0,
             "flipper_velocity": 1.0,
-            "flipper_damping": 2.5,
+            "flipper_damping": 10.0,
             "flipper_friction": 0.05,
-            "flipper_position_kp": 220.0,
+            "flipper_position_kp": 1200.0,
             "flipper_position_ki": 0.0,
-            "flipper_position_kd": 70.0,
+            "flipper_position_kd": 100.0,
             "flipper_position_max_integral_error": 1000.0,
             "sprocket_effort": 1000.0,
             "sprocket_velocity": 100.0,
@@ -79,7 +80,8 @@ DEFAULT_DATA: Dict[str, Any] = {
             "belt_element_length": 0.02,
             "belt_thickness": 0.02,
             "grouser_height": 0.01,
-            "mu": 0.5,
+            "grouser_shape": "rectangle",
+            "mu": 0.4,
             "min_depth": 0.0005,
             "contact_kp": 120000.0,
             "contact_kd": 2500.0,
@@ -111,6 +113,7 @@ GUI_FIELDS: Tuple[Tuple[str, str], ...] = (
     ("geometry.flipper_position", "Flipper x offset [m] (legacy)"),
     ("geometry.flipper_y_offset", "Flipper y offset [m]"),
     ("geometry.wheel_radius", "Pulley radius [m]"),
+    ("geometry.track_collision_margin", "Track collision margin [m]"),
     ("mass.base", "Base mass [kg]"),
     ("mass.body_track", "Body track mass [kg]"),
     ("mass.body_sprocket", "Body pulley mass [kg]"),
@@ -135,6 +138,7 @@ GUI_FIELDS: Tuple[Tuple[str, str], ...] = (
     ("continuous_track.belt_element_length", "Belt element length [m]"),
     ("continuous_track.belt_thickness", "Belt thickness [m]"),
     ("continuous_track.grouser_height", "Grouser height [m]"),
+    ("continuous_track.grouser_shape", "Grouser shape"),
     ("continuous_track.mu", "Track friction mu"),
     ("continuous_track.min_depth", "Track contact min_depth"),
     ("continuous_track.contact_kp", "Track contact Kp"),
@@ -286,13 +290,14 @@ def box_link(name: str, size: Tuple[float, float, float], mass: float, material:
 
 
 def cylinder_link(name: str, radius: float, length: float, mass: float, material: str,
-                  collision: bool = True) -> str:
+                  collision: bool = True, collision_radius: float = None) -> str:
     collision_xml = ""
     if collision:
+        effective_collision_radius = radius if collision_radius is None else collision_radius
         collision_xml = f"""
     <collision>
       <origin xyz="0 0 0" rpy="{fmt(math.pi / 2.0)} 0 0"/>
-      <geometry><cylinder radius="{fmt(radius)}" length="{fmt(length)}"/></geometry>
+      <geometry><cylinder radius="{fmt(effective_collision_radius)}" length="{fmt(length)}"/></geometry>
     </collision>"""
     return f"""
   <link name="{name}">
@@ -510,26 +515,103 @@ def gazebo_box_visual_xml(name: str, pose: Tuple[float, float, float, float, flo
       </visual>"""
 
 
+def gazebo_cylinder_collision_xml(name: str,
+                                  pose: Tuple[float, float, float, float, float, float],
+                                  radius: float, length: float, mu: float,
+                                  min_depth: float, contact_kp: float,
+                                  contact_kd: float, contact_max_vel: float) -> str:
+    return f"""
+      <collision name="{name}">
+        <pose>{fmt(pose[0])} {fmt(pose[1])} {fmt(pose[2])} {fmt(pose[3])} {fmt(pose[4])} {fmt(pose[5])}</pose>
+        <geometry><cylinder><radius>{fmt(radius)}</radius><length>{fmt(length)}</length></cylinder></geometry>
+        <max_contacts>10</max_contacts>
+        <surface>
+          <bounce><restitution_coefficient>0</restitution_coefficient><threshold>100000</threshold></bounce>
+          <friction><torsional><coefficient>1</coefficient><use_patch_radius>true</use_patch_radius><patch_radius>0</patch_radius><surface_radius>0</surface_radius><ode><slip>0</slip></ode></torsional><ode><mu>{fmt(mu)}</mu><mu2>{fmt(mu)}</mu2></ode></friction>
+          <contact><ode><kp>{fmt(contact_kp)}</kp><kd>{fmt(contact_kd)}</kd><max_vel>{fmt(contact_max_vel)}</max_vel><min_depth>{fmt(min_depth)}</min_depth></ode></contact>
+        </surface>
+      </collision>"""
+
+
+def gazebo_cylinder_visual_xml(name: str,
+                               pose: Tuple[float, float, float, float, float, float],
+                               radius: float, length: float,
+                               color: Tuple[float, float, float, float]) -> str:
+    return f"""
+      <visual name="{name}">
+        <pose>{fmt(pose[0])} {fmt(pose[1])} {fmt(pose[2])} {fmt(pose[3])} {fmt(pose[4])} {fmt(pose[5])}</pose>
+        <geometry><cylinder><radius>{fmt(radius)}</radius><length>{fmt(length)}</length></cylinder></geometry>
+        {gazebo_material_xml(color)}
+      </visual>"""
+
+
+def grouser_primitives(shape: str, grouser_width: float, track_width: float,
+                       height: float) -> list:
+    """Return (geometry, dx, dz, sx_or_radius, sy, sz) primitives."""
+    shape = shape.lower()
+    if shape == "trapezoid":
+        layer_height = height / 3.0
+        return [
+            ("box", 0.0, (j + 0.5) * layer_height,
+             grouser_width * scale, track_width, layer_height)
+            for j, scale in enumerate((1.0, 0.75, 0.5))
+        ]
+    if shape == "spike":
+        # Wide at the belt and progressively narrower toward the contact tip.
+        layer_height = height / 3.0
+        return [
+            ("box", 0.0, (j + 0.5) * layer_height,
+             grouser_width * scale, track_width, layer_height)
+            for j, scale in enumerate((1.0, 2.0 / 3.0, 1.0 / 3.0))
+        ]
+    if shape == "semicircle":
+        # The lower half is embedded in the belt, leaving a semicircular crown.
+        return [("cylinder", 0.0, 0.0, height, track_width, 0.0)]
+    if shape == "fillet":
+        radius = min(height / 2.0, grouser_width / 2.0)
+        straight = max(grouser_width - 2.0 * radius, 1e-4)
+        return [
+            ("box", 0.0, height / 2.0, straight, track_width, height),
+            ("cylinder", -straight / 2.0, height / 2.0,
+             radius, track_width, 0.0),
+            ("cylinder", straight / 2.0, height / 2.0,
+             radius, track_width, 0.0),
+        ]
+    return [("box", 0.0, height / 2.0,
+             grouser_width, track_width, height)]
+
+
 def static_straight_grousers_xml(count: int, length: float, width: float,
                                  grouser_height: float, grouser_width: float,
                                  pitch: float, mu: float, min_depth: float,
                                  contact_kp: float, contact_kd: float,
                                  contact_max_vel: float,
-                                 color: Tuple[float, float, float, float]) -> str:
+                                 color: Tuple[float, float, float, float],
+                                 shape: str = "rectangle") -> str:
     if count <= 0 or grouser_height <= 0.0:
         return ""
-    size = (min(grouser_width, pitch * 0.9), width, grouser_height)
+    effective_width = min(grouser_width, pitch * 0.9)
+    primitives = grouser_primitives(shape, effective_width, width, grouser_height)
     parts = []
     for i in range(count):
         x = min(pitch * (i + 0.5), length)
-        pose = (x, 0.0, grouser_height / 2.0, 0.0, 0.0, 0.0)
-        parts.append(
-            gazebo_box_collision_xml(
-                f"grouser_collision_{i}", pose, size, mu, min_depth,
-                contact_kp, contact_kd, contact_max_vel
-            )
-        )
-        parts.append(gazebo_box_visual_xml(f"grouser_visual_{i}", pose, size, color))
+        for j, (geometry, dx, dz, sx, sy, sz) in enumerate(primitives):
+            pose = (x + dx, 0.0, dz,
+                    math.pi / 2.0 if geometry == "cylinder" else 0.0, 0.0, 0.0)
+            key = f"{i}_{j}"
+            if geometry == "cylinder":
+                parts.append(gazebo_cylinder_collision_xml(
+                    f"grouser_collision_{key}", pose, sx, sy, mu, min_depth,
+                    contact_kp, contact_kd, contact_max_vel))
+                parts.append(gazebo_cylinder_visual_xml(
+                    f"grouser_visual_{key}", pose, sx, sy, color))
+            else:
+                size = (sx, sy, sz)
+                parts.append(gazebo_box_collision_xml(
+                    f"grouser_collision_{key}", pose, size, mu, min_depth,
+                    contact_kp, contact_kd, contact_max_vel))
+                parts.append(gazebo_box_visual_xml(
+                    f"grouser_visual_{key}", pose, size, color))
     return "".join(parts)
 
 
@@ -538,30 +620,36 @@ def static_arc_grousers_xml(count: int, radius: float, length: float,
                             pitch: float, mu: float, min_depth: float,
                             contact_kp: float, contact_kd: float,
                             contact_max_vel: float,
-                            color: Tuple[float, float, float, float]) -> str:
+                            color: Tuple[float, float, float, float],
+                            shape: str = "rectangle") -> str:
     if count <= 0 or grouser_height <= 0.0:
         return ""
-    size = (grouser_width, length, grouser_height)
-    grouser_radius = radius + grouser_height / 2.0
+    primitives = grouser_primitives(shape, grouser_width, length, grouser_height)
     angle_step = pitch / max(radius, 1e-6)
     parts = []
     for i in range(count):
         angle = angle_step * (i + 0.5)
-        pose = (
-            grouser_radius * math.sin(angle),
-            0.0,
-            -radius + grouser_radius * math.cos(angle),
-            0.0,
-            angle,
-            0.0,
-        )
-        parts.append(
-            gazebo_box_collision_xml(
-                f"grouser_collision_{i}", pose, size, mu, min_depth,
-                contact_kp, contact_kd, contact_max_vel
-            )
-        )
-        parts.append(gazebo_box_visual_xml(f"grouser_visual_{i}", pose, size, color))
+        for j, (geometry, dx, dz, sx, sy, sz) in enumerate(primitives):
+            radial = radius + dz
+            px = radial * math.sin(angle) + dx * math.cos(angle)
+            pz = -radius + radial * math.cos(angle) - dx * math.sin(angle)
+            pose = (px, 0.0, pz,
+                    math.pi / 2.0 if geometry == "cylinder" else 0.0,
+                    angle, 0.0)
+            key = f"{i}_{j}"
+            if geometry == "cylinder":
+                parts.append(gazebo_cylinder_collision_xml(
+                    f"grouser_collision_{key}", pose, sx, sy, mu, min_depth,
+                    contact_kp, contact_kd, contact_max_vel))
+                parts.append(gazebo_cylinder_visual_xml(
+                    f"grouser_visual_{key}", pose, sx, sy, color))
+            else:
+                size = (sx, sy, sz)
+                parts.append(gazebo_box_collision_xml(
+                    f"grouser_collision_{key}", pose, size, mu, min_depth,
+                    contact_kp, contact_kd, contact_max_vel))
+                parts.append(gazebo_box_visual_xml(
+                    f"grouser_visual_{key}", pose, size, color))
     return "".join(parts)
 
 
@@ -570,13 +658,14 @@ def gazebo_box_link(name: str, pose: Tuple[float, float, float, float, float, fl
                     mu: float, contact: Tuple[float, float, float, float],
                     color: Tuple[float, float, float, float],
                     grouser_count: int = 0, grouser_height: float = 0.0,
-                    grouser_width: float = 0.0, grouser_pitch: float = 0.0) -> str:
+                    grouser_width: float = 0.0, grouser_pitch: float = 0.0,
+                    grouser_shape: str = "rectangle") -> str:
     sx, sy, sz = size
     min_depth, contact_kp, contact_kd, contact_max_vel = contact
     grouser_xml = static_straight_grousers_xml(
         grouser_count, sx, sy, grouser_height, grouser_width,
         max(grouser_pitch, 1e-6), mu, min_depth,
-        contact_kp, contact_kd, contact_max_vel, color
+        contact_kp, contact_kd, contact_max_vel, color, grouser_shape
     )
     return f"""
   <gazebo>
@@ -611,12 +700,13 @@ def gazebo_cylinder_link(name: str, pose: Tuple[float, float, float, float, floa
                          mu: float, contact: Tuple[float, float, float, float],
                          color: Tuple[float, float, float, float],
                          grouser_count: int = 0, grouser_height: float = 0.0,
-                         grouser_width: float = 0.0, grouser_pitch: float = 0.0) -> str:
+                         grouser_width: float = 0.0, grouser_pitch: float = 0.0,
+                         grouser_shape: str = "rectangle") -> str:
     min_depth, contact_kp, contact_kd, contact_max_vel = contact
     grouser_xml = static_arc_grousers_xml(
         grouser_count, radius, length, grouser_height, grouser_width,
         max(grouser_pitch, 1e-6), mu, min_depth,
-        contact_kp, contact_kd, contact_max_vel, color
+        contact_kp, contact_kd, contact_max_vel, color, grouser_shape
     )
     return f"""
   <gazebo>
@@ -726,6 +816,7 @@ def continuous_track_xml(name: str, parent: str, sprocket_joint: str,
     track_radius = max(radius + belt_thickness, 1e-4)
     grouser_height = max(float(params.get("grouser_height", 0.0)), 0.0)
     grouser_width = max(float(params.get("belt_element_length", 0.02)), 1e-4)
+    grouser_shape = str(params.get("grouser_shape", "rectangle"))
     perimeter = 2.0 * length + 2.0 * math.pi * track_radius
     elements_per_round = max(int(params["elements_per_round"]), 4)
     grouser_pitch = perimeter / elements_per_round
@@ -753,6 +844,7 @@ def continuous_track_xml(name: str, parent: str, sprocket_joint: str,
             grouser_height,
             grouser_width,
             grouser_pitch,
+            grouser_shape,
         )
         + gazebo_box_link(
             f"{name}_straight_segment_link1",
@@ -766,6 +858,7 @@ def continuous_track_xml(name: str, parent: str, sprocket_joint: str,
             grouser_height,
             grouser_width,
             grouser_pitch,
+            grouser_shape,
         )
         + gazebo_cylinder_link(
             f"{name}_arc_segment_link0",
@@ -780,6 +873,7 @@ def continuous_track_xml(name: str, parent: str, sprocket_joint: str,
             grouser_height,
             grouser_width,
             grouser_pitch,
+            grouser_shape,
         )
         + gazebo_cylinder_link(
             f"{name}_arc_segment_link1",
@@ -794,6 +888,7 @@ def continuous_track_xml(name: str, parent: str, sprocket_joint: str,
             grouser_height,
             grouser_width,
             grouser_pitch,
+            grouser_shape,
         )
         + gazebo_track_joint(
             f"{name}_straight_segment_joint0",
@@ -862,7 +957,8 @@ def make_body_side(side: str, sign: int, g: Dict[str, float], m: Dict[str, float
             g["body_width"],
             m["body_sprocket"],
             "pulley_dark",
-            collision=False,
+            collision=True,
+            collision_radius=g["wheel_radius"] + g.get("track_collision_margin", 0.0),
         )
         + continuous_joint(
             f"sprocket_axle_{side}",
@@ -879,7 +975,8 @@ def make_body_side(side: str, sign: int, g: Dict[str, float], m: Dict[str, float
             g["body_width"],
             m["body_sprocket"],
             "pulley_dark",
-            collision=False,
+            collision=True,
+            collision_radius=g["wheel_radius"] + g.get("track_collision_margin", 0.0),
         )
         + fixed_joint(f"idler_axle_{side}", body_link, idler_link, (idler_x, 0.0, 0.0))
         + transmission(
@@ -937,7 +1034,8 @@ def make_flipper(side: str, side_sign: int, where: str, front_sign: int,
             g["flipper_width"],
             m["flipper_sprocket"],
             "pulley_dark",
-            collision=False,
+            collision=True,
+            collision_radius=g["wheel_radius"] + g.get("track_collision_margin", 0.0),
         )
         + continuous_joint(
             sprocket_joint,
@@ -954,7 +1052,8 @@ def make_flipper(side: str, side_sign: int, where: str, front_sign: int,
             g["flipper_width"],
             m["flipper_sprocket"],
             "pulley_dark",
-            collision=False,
+            collision=True,
+            collision_radius=g["wheel_radius"] + g.get("track_collision_margin", 0.0),
         )
         + fixed_joint(f"flipper_idler_axle_{side}_{where}", body_link, idler_link, (idler_x, 0.0, 0.0))
         + transmission(f"trans_{side}_{where}", joint_name, "position")

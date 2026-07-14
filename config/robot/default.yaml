@@ -20,6 +20,7 @@ robot_config:
     flipper_position: 0.225
     flipper_y_offset: 0.23
     wheel_radius: 0.082
+    track_collision_margin: 0.03
 
   mass:
     base: 5.0
@@ -32,14 +33,14 @@ robot_config:
   joints:
     flipper_lower: -2.35619449
     flipper_upper: 2.35619449
-    flipper_torque_max: 8000.0
-    flipper_effort: 8000.0
-    flipper_velocity: 1.0
-    flipper_damping: 2.5
+    flipper_torque_max: 20000.0
+    flipper_effort: 20000.0
+    flipper_velocity: 10.0
+    flipper_damping: 10.0
     flipper_friction: 0.05
-    flipper_position_kp: 220.0
+    flipper_position_kp: 1200.0
     flipper_position_ki: 0.0
-    flipper_position_kd: 70.0
+    flipper_position_kd: 100.0
     flipper_position_max_integral_error: 1000.0
     sprocket_effort: 1000.0
     sprocket_velocity: 100.0
@@ -47,11 +48,14 @@ robot_config:
   continuous_track:
     enabled: true
     pitch_diameter: 0.24
-    elements_per_round: 20
+    elements_per_round: 40
     belt_element_length: 0.02
     belt_thickness: 0.02
-    grouser_height: 0.01
-    mu: 0.5
+    grouser_height: 0.018
+    # rectangle, trapezoid, spike, semicircle, or fillet
+    grouser_shape: rectangle
+    # High enough for step / slope traction, while still allowing skid steering.
+    mu: 0.8
     min_depth: 0.0005
     contact_kp: 120000.0
     contact_kd: 2500.0

@@ -9,6 +9,20 @@ crawler_gazebo:
     start_respawn_gui: true
     start_cloudmap_publisher: true
     start_contact_points_publisher: true
+    # Continuous-track collision / visual update rate [Hz]. 0 uses every physics step.
+    track_update_rate: 0.0
+    # all, arc_only (sprocket-side rotation), or straight_only (linear belt sections)
+    track_segment_mode: all
+    # rectangle, trapezoid, spike, semicircle (kamaboko), fillet,
+    # or auto (robot YAML value)
+    grouser_shape: spike
+    spawn_pose:
+      x: -3.0
+      y: 0.0
+      z: 0.5
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
 
 gazebo_contact_points_publisher:
   world_name: default
