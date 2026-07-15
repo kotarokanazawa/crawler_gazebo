@@ -545,6 +545,39 @@ def gazebo_cylinder_visual_xml(name: str,
       </visual>"""
 
 
+def gazebo_triangle_collision_xml(name: str,
+                                  pose: Tuple[float, float, float, float, float, float],
+                                  base_width: float, length: float, height: float,
+                                  mu: float, min_depth: float, contact_kp: float,
+                                  contact_kd: float, contact_max_vel: float) -> str:
+    """A single triangular prism, extruded across the track width."""
+    half_width = base_width / 2.0
+    return f"""
+      <collision name="{name}">
+        <pose>{fmt(pose[0])} {fmt(pose[1])} {fmt(pose[2])} {fmt(pose[3])} {fmt(pose[4])} {fmt(pose[5])}</pose>
+        <geometry><polyline><height>{fmt(length)}</height><point>{fmt(-half_width)} 0</point><point>{fmt(half_width)} 0</point><point>0 {fmt(height)}</point></polyline></geometry>
+        <max_contacts>10</max_contacts>
+        <surface>
+          <bounce><restitution_coefficient>0</restitution_coefficient><threshold>100000</threshold></bounce>
+          <friction><torsional><coefficient>1</coefficient><use_patch_radius>true</use_patch_radius><patch_radius>0</patch_radius><surface_radius>0</surface_radius><ode><slip>0</slip></ode></torsional><ode><mu>{fmt(mu)}</mu><mu2>{fmt(mu)}</mu2></ode></friction>
+          <contact><ode><kp>{fmt(contact_kp)}</kp><kd>{fmt(contact_kd)}</kd><max_vel>{fmt(contact_max_vel)}</max_vel><min_depth>{fmt(min_depth)}</min_depth></ode></contact>
+        </surface>
+      </collision>"""
+
+
+def gazebo_triangle_visual_xml(name: str,
+                               pose: Tuple[float, float, float, float, float, float],
+                               base_width: float, length: float, height: float,
+                               color: Tuple[float, float, float, float]) -> str:
+    half_width = base_width / 2.0
+    return f"""
+      <visual name="{name}">
+        <pose>{fmt(pose[0])} {fmt(pose[1])} {fmt(pose[2])} {fmt(pose[3])} {fmt(pose[4])} {fmt(pose[5])}</pose>
+        <geometry><polyline><height>{fmt(length)}</height><point>{fmt(-half_width)} 0</point><point>{fmt(half_width)} 0</point><point>0 {fmt(height)}</point></polyline></geometry>
+        {gazebo_material_xml(color)}
+      </visual>"""
+
+
 def grouser_primitives(shape: str, grouser_width: float, track_width: float,
                        height: float) -> list:
     """Return (geometry, dx, dz, sx_or_radius, sy, sz) primitives."""
@@ -557,13 +590,9 @@ def grouser_primitives(shape: str, grouser_width: float, track_width: float,
             for j, scale in enumerate((1.0, 0.75, 0.5))
         ]
     if shape == "spike":
-        # Wide at the belt and progressively narrower toward the contact tip.
-        layer_height = height / 3.0
-        return [
-            ("box", 0.0, (j + 0.5) * layer_height,
-             grouser_width * scale, track_width, layer_height)
-            for j, scale in enumerate((1.0, 2.0 / 3.0, 1.0 / 3.0))
-        ]
+        # One exact triangular prism: wide at the belt, one outward tip.
+        return [("triangle", 0.0, 0.0,
+                 grouser_width, track_width, height)]
     if shape == "semicircle":
         # The lower half is embedded in the belt, leaving a semicircular crown.
         return [("cylinder", 0.0, 0.0, height, track_width, 0.0)]
@@ -596,8 +625,9 @@ def static_straight_grousers_xml(count: int, length: float, width: float,
     for i in range(count):
         x = min(pitch * (i + 0.5), length)
         for j, (geometry, dx, dz, sx, sy, sz) in enumerate(primitives):
-            pose = (x + dx, 0.0, dz,
-                    math.pi / 2.0 if geometry == "cylinder" else 0.0, 0.0, 0.0)
+            pose = (x + dx, sy / 2.0 if geometry == "triangle" else 0.0, dz,
+                    math.pi / 2.0 if geometry in {"cylinder", "triangle"} else 0.0,
+                    0.0, 0.0)
             key = f"{i}_{j}"
             if geometry == "cylinder":
                 parts.append(gazebo_cylinder_collision_xml(
@@ -605,6 +635,12 @@ def static_straight_grousers_xml(count: int, length: float, width: float,
                     contact_kp, contact_kd, contact_max_vel))
                 parts.append(gazebo_cylinder_visual_xml(
                     f"grouser_visual_{key}", pose, sx, sy, color))
+            elif geometry == "triangle":
+                parts.append(gazebo_triangle_collision_xml(
+                    f"grouser_collision_{key}", pose, sx, sy, sz, mu, min_depth,
+                    contact_kp, contact_kd, contact_max_vel))
+                parts.append(gazebo_triangle_visual_xml(
+                    f"grouser_visual_{key}", pose, sx, sy, sz, color))
             else:
                 size = (sx, sy, sz)
                 parts.append(gazebo_box_collision_xml(
@@ -633,8 +669,8 @@ def static_arc_grousers_xml(count: int, radius: float, length: float,
             radial = radius + dz
             px = radial * math.sin(angle) + dx * math.cos(angle)
             pz = -radius + radial * math.cos(angle) - dx * math.sin(angle)
-            pose = (px, 0.0, pz,
-                    math.pi / 2.0 if geometry == "cylinder" else 0.0,
+            pose = (px, sy / 2.0 if geometry == "triangle" else 0.0, pz,
+                    math.pi / 2.0 if geometry in {"cylinder", "triangle"} else 0.0,
                     angle, 0.0)
             key = f"{i}_{j}"
             if geometry == "cylinder":
@@ -643,6 +679,12 @@ def static_arc_grousers_xml(count: int, radius: float, length: float,
                     contact_kp, contact_kd, contact_max_vel))
                 parts.append(gazebo_cylinder_visual_xml(
                     f"grouser_visual_{key}", pose, sx, sy, color))
+            elif geometry == "triangle":
+                parts.append(gazebo_triangle_collision_xml(
+                    f"grouser_collision_{key}", pose, sx, sy, sz, mu, min_depth,
+                    contact_kp, contact_kd, contact_max_vel))
+                parts.append(gazebo_triangle_visual_xml(
+                    f"grouser_visual_{key}", pose, sx, sy, sz, color))
             else:
                 size = (sx, sy, sz)
                 parts.append(gazebo_box_collision_xml(

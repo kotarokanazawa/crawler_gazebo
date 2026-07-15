@@ -2,6 +2,18 @@ crawler_gazebo:
   simulator:
     spawn_robot: true
     spawn_arena: true
+    # Base Gazebo world under crawler_gazebo/world (absolute paths are also accepted).
+    worldfile: base_fields.world
+    # Environment layout under config/gazebo_environment.
+    #arena_yaml: singlerane/bridge.yaml
+    arena_yaml: benchmark.yaml
+    #arena_yaml: singlerane/bridge.yaml
+    # Installed gz-physics engines: dart, bullet, tpe.
+    # The articulated continuous-track crawler currently runs correctly only
+    # with dart. Bullet cannot build its prismatic joints; TPE ignores dynamics.
+    physics_engine: dart
+    # Used only by DART: bullet, fcl, ode, or dart.
+    dart_collision_detector: bullet
     start_controllers: true
     start_control_nodes: true
     start_gui_tools: true
@@ -15,7 +27,7 @@ crawler_gazebo:
     track_segment_mode: all
     # rectangle, trapezoid, spike, semicircle (kamaboko), fillet,
     # or auto (robot YAML value)
-    grouser_shape: spike
+    grouser_shape: semicircle
     spawn_pose:
       x: -3.0
       y: 0.0

@@ -91,7 +91,8 @@ def _append_sun_light(world):
     _set_child_text(light, "direction", "-0.5 0.1 -0.9")
 
 
-def _make_ignition_world_file(worldfile, max_step_size, real_time_update_rate):
+def _make_ignition_world_file(worldfile, max_step_size, real_time_update_rate,
+                              physics_engine="dart", dart_collision_detector="bullet"):
     try:
         tree = ET.parse(worldfile)
     except ET.ParseError:
@@ -110,28 +111,39 @@ def _make_ignition_world_file(worldfile, max_step_size, real_time_update_rate):
     if replaced_sun:
         _append_sun_light(world)
 
-    # A crawler has many small, fast-moving track collision shapes.  Use a
-    # finer physics step and Bullet collision detection so thin walls and
-    # obstacle edges are not skipped between consecutive simulation steps.
+    # A crawler has many small, fast-moving track collision shapes. Use a fine
+    # step and select the gz-physics backend explicitly.
     physics = world.find("physics")
     if physics is None:
         physics = ET.SubElement(
-            world, "physics", {"name": "crawler_physics", "type": "dart", "default": "true"})
+            world, "physics", {"name": "crawler_physics", "type": "ignored", "default": "true"})
     else:
-        physics.set("type", "dart")
+        physics.set("type", "ignored")
         physics.set("default", "true")
     _set_child_text(physics, "max_step_size", str(max_step_size))
     _set_child_text(physics, "real_time_update_rate", str(real_time_update_rate))
     _set_child_text(physics, "max_contacts", "50")
-    dart = physics.find("dart")
-    if dart is None:
+    old_dart = physics.find("dart")
+    if old_dart is not None:
+        physics.remove(old_dart)
+    if physics_engine == "dart":
         dart = ET.SubElement(physics, "dart")
-    _set_child_text(dart, "collision_detector", "bullet")
+        _set_child_text(dart, "collision_detector", dart_collision_detector)
 
     # Once an SDF declares a world system explicitly, Ignition no longer adds
     # the default server systems. Keep the normal systems and add Contact.
+    engine_plugins = {
+        "dart": "libignition-physics-dartsim-plugin.so",
+        "bullet": "libignition-physics-bullet-plugin.so",
+        "tpe": "libignition-physics-tpe-plugin.so",
+    }
+    physics_plugin = ET.SubElement(world, "plugin", {
+        "filename": "ignition-gazebo-physics-system",
+        "name": "ignition::gazebo::systems::Physics",
+    })
+    engine = ET.SubElement(physics_plugin, "engine")
+    _set_child_text(engine, "filename", engine_plugins[physics_engine])
     for filename, name in (
-        ("ignition-gazebo-physics-system", "ignition::gazebo::systems::Physics"),
         ("ignition-gazebo-user-commands-system", "ignition::gazebo::systems::UserCommands"),
         ("ignition-gazebo-scene-broadcaster-system", "ignition::gazebo::systems::SceneBroadcaster"),
         ("ignition-gazebo-contact-system", "ignition::gazebo::systems::Contact"),
@@ -375,6 +387,16 @@ def _scaled_sdf_file(sdf_path, model_name, scale_x=1.0, scale_y=1.0, scale_z=1.0
             _set_child_text(model, "pose", "0 0 0 0 0 0")
         handled = set()
         for visual in root.findall(".//visual"):
+            # Arena objects are temporary scaled copies. Override only their
+            # visuals with an earthy brown; collision properties are unchanged.
+            old_material = visual.find("material")
+            if old_material is not None:
+                visual.remove(old_material)
+            material = ET.SubElement(visual, "material")
+            _set_child_text(material, "ambient", "0.24 0.12 0.045 1")
+            _set_child_text(material, "diffuse", "0.42 0.23 0.08 1")
+            _set_child_text(material, "specular", "0.06 0.04 0.02 1")
+            _set_child_text(material, "emissive", "0 0 0 1")
             for mesh in visual.findall(".//mesh"):
                 _set_mesh_scale(mesh, scale_x, scale_y, scale_z, positive_only=False)
                 handled.add(id(mesh))
@@ -706,13 +728,40 @@ def _launch_setup(context, *args, **kwargs):
     model = LaunchConfiguration("model").perform(context)
     max_step_size = float(LaunchConfiguration("max_step_size").perform(context))
     real_time_update_rate = float(LaunchConfiguration("real_time_update_rate").perform(context))
+    physics_engine = LaunchConfiguration("physics_engine").perform(context).lower()
+    if physics_engine == "auto":
+        physics_engine = str(_setting(
+            settings, "crawler_gazebo.simulator.physics_engine", "dart")).lower()
+    if physics_engine not in {"dart", "bullet", "tpe"}:
+        raise ValueError("physics_engine must be dart, bullet, or tpe")
+    dart_collision_detector = str(_setting(
+        settings, "crawler_gazebo.simulator.dart_collision_detector", "bullet")).lower()
+    if dart_collision_detector not in {"bullet", "fcl", "ode", "dart"}:
+        raise ValueError("dart_collision_detector must be bullet, fcl, ode, or dart")
+    worldfile_value = LaunchConfiguration("worldfile").perform(context)
+    if worldfile_value == "auto":
+        worldfile_value = str(_setting(
+            settings, "crawler_gazebo.simulator.worldfile", "base_fields.world"))
+    arena_yaml_value = LaunchConfiguration("arena_yaml").perform(context)
+    if arena_yaml_value == "auto":
+        arena_yaml_value = str(_setting(
+            settings, "crawler_gazebo.simulator.arena_yaml", "singlerane/bridge.yaml"))
+    arena_yaml_path = _resolve_package_file(
+        arena_yaml_value, crawler_gazebo_share, "config/gazebo_environment")
     worldfile = _make_ignition_world_file(
         _resolve_package_file(
-            LaunchConfiguration("worldfile").perform(context), crawler_gazebo_share, "world"),
+            worldfile_value, crawler_gazebo_share, "world"),
         max_step_size,
         real_time_update_rate,
+        physics_engine,
+        dart_collision_detector,
     )
     spawn_robot = _as_bool(_setting(settings, "crawler_gazebo.simulator.spawn_robot", True))
+    if spawn_robot and physics_engine != "dart":
+        print(
+            f"[crawler_gazebo] WARNING: physics_engine={physics_engine} can load the world, "
+            "but this Fortress gz-physics backend does not fully support the crawler's "
+            "articulated prismatic/revolute track joints. Use dart for driven simulation.")
     spawn_arena_setting = _as_bool(_setting(settings, "crawler_gazebo.simulator.spawn_arena", True))
     start_gui_tools_setting = _as_bool(_setting(settings, "crawler_gazebo.simulator.start_gui_tools", True))
     start_flipper_joint_gui_setting = _as_bool(_setting(settings, "crawler_gazebo.simulator.start_flipper_joint_gui", True))
@@ -808,10 +857,7 @@ def _launch_setup(context, *args, **kwargs):
     if spawn_arena:
         actions.extend(
             _arena_spawn_actions(
-                _resolve_package_file(
-                    LaunchConfiguration("arena_yaml").perform(context),
-                    crawler_gazebo_share,
-                    "config/gazebo_environment"),
+                arena_yaml_path,
                 crawler_gazebo_share / "gazebo_model" / "model",
                 world_name,
                 3.0,
@@ -947,10 +993,7 @@ def _launch_setup(context, *args, **kwargs):
                 output="screen",
                 parameters=[
                     {
-                        "arena_yaml": str(_resolve_package_file(
-                            LaunchConfiguration("arena_yaml").perform(context),
-                            crawler_gazebo_share,
-                            "config/gazebo_environment")),
+                        "arena_yaml": str(arena_yaml_path),
                         "model_root": str(crawler_gazebo_share / "gazebo_model" / "model"),
                         "use_gazebo_services": False,
                         "use_sim_time": use_sim_time,
@@ -1005,10 +1048,9 @@ def generate_launch_description():
         DeclareLaunchArgument("robot_size", default_value="default"),
         DeclareLaunchArgument("robot_urdf", default_value=""),
         DeclareLaunchArgument("use_generated_robot_urdf", default_value="true"),
-        DeclareLaunchArgument("worldfile", default_value="base_fields.world"),
+        DeclareLaunchArgument("worldfile", default_value="auto"),
         DeclareLaunchArgument("simsetting_yaml", default_value="simsetting.yaml"),
-        # DeclareLaunchArgument("arena_yaml", default_value="benchmark.yaml"),
-        DeclareLaunchArgument("arena_yaml", default_value="singlerane/bridge.yaml"),
+        DeclareLaunchArgument("arena_yaml", default_value="auto"),
         DeclareLaunchArgument("spawn_arena", default_value="true"),
         DeclareLaunchArgument("use_wall_arg", default_value="false"),
         DeclareLaunchArgument("wall_sdf", default_value=""),
@@ -1033,6 +1075,7 @@ def generate_launch_description():
         DeclareLaunchArgument("spawn_yaw", default_value="auto"),
         DeclareLaunchArgument("track_segment_mode", default_value="auto"),
         DeclareLaunchArgument("track_contact_radius", default_value="auto"),
+        DeclareLaunchArgument("physics_engine", default_value="auto"),
         DeclareLaunchArgument("max_step_size", default_value="0.0005"),
         DeclareLaunchArgument("real_time_update_rate", default_value="2000"),
         DeclareLaunchArgument("start_gui_tools", default_value="true"),
